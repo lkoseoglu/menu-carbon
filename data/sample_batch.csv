@@ -1,0 +1,56 @@
+recipe_name,ingredient_id,weight_g,portions,meal_type
+Izgara Köfte,beef,200,1,lunch
+Izgara Köfte,onion,30,1,lunch
+Izgara Köfte,oil_sunflower,10,1,lunch
+Izgara Köfte,parsley,5,1,lunch
+Pilav,rice,80,1,lunch
+Pilav,butter,15,1,lunch
+Pilav,salt,2,1,lunch
+Mercimek Çorbası,lentil,100,2,lunch
+Mercimek Çorbası,onion,50,2,lunch
+Mercimek Çorbası,carrot,30,2,lunch
+Mercimek Çorbası,oil_olive,15,2,lunch
+Mercimek Çorbası,flour,10,2,lunch
+Tavuk Sote,chicken,250,2,dinner
+Tavuk Sote,pepper,100,2,dinner
+Tavuk Sote,tomato,150,2,dinner
+Tavuk Sote,onion,50,2,dinner
+Tavuk Sote,oil_sunflower,20,2,dinner
+Sebzeli Makarna,pasta,200,2,lunch
+Sebzeli Makarna,tomato,100,2,lunch
+Sebzeli Makarna,zucchini,80,2,lunch
+Sebzeli Makarna,pepper,60,2,lunch
+Sebzeli Makarna,oil_olive,15,2,lunch
+Sebzeli Makarna,cheese,30,2,lunch
+Kahvaltı Tabağı,egg,120,1,breakfast
+Kahvaltı Tabağı,cheese_feta,50,1,breakfast
+Kahvaltı Tabağı,tomato,80,1,breakfast
+Kahvaltı Tabağı,cucumber,60,1,breakfast
+Kahvaltı Tabağı,olive,30,1,breakfast
+Kahvaltı Tabağı,bread,50,1,breakfast
+Falafel Wrap,chickpea,150,2,lunch
+Falafel Wrap,bread,100,2,lunch
+Falafel Wrap,lettuce,40,2,lunch
+Falafel Wrap,tomato,60,2,lunch
+Falafel Wrap,yogurt,50,2,lunch
+Falafel Wrap,oil_olive,10,2,lunch
+Somon Izgara,fish_farmed,200,1,dinner
+Somon Izgara,lemon,30,1,dinner
+Somon Izgara,oil_olive,15,1,dinner
+Somon Izgara,dill,5,1,dinner
+Biftek,beef,300,1,dinner
+Biftek,butter,20,1,dinner
+Biftek,mushroom,80,1,dinner
+Biftek,garlic,10,1,dinner
+Vejetaryen Buddha Bowl,tofu,150,1,lunch
+Vejetaryen Buddha Bowl,rice_brown,80,1,lunch
+Vejetaryen Buddha Bowl,broccoli,100,1,lunch
+Vejetaryen Buddha Bowl,carrot,60,1,lunch
+Vejetaryen Buddha Bowl,spinach,50,1,lunch
+Vejetaryen Buddha Bowl,sesame,10,1,lunch
+Karnıyarık,eggplant,250,2,dinner
+Karnıyarık,beef,150,2,dinner
+Karnıyarık,onion,50,2,dinner
+Karnıyarık,tomato,100,2,dinner
+Karnıyarık,pepper,60,2,dinner
+Karnıyarık,oil_sunflower,30,2,dinner
