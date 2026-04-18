@@ -11,7 +11,6 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-# Load environment variables from .env file
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -42,7 +41,7 @@ except ImportError:
     DASHBOARD_AVAILABLE = False
 
 try:
-    from pdf_reader import PDFMenuReader, render_pdf_upload_section
+    from pdf_reader import PDFMenuReader
     PDF_READER_AVAILABLE = True
 except ImportError:
     PDF_READER_AVAILABLE = False
@@ -142,7 +141,6 @@ def calculate(payload, ef_map, season_map, region="tr"):
         "insights": {
             "car_km": round(per_p / 120, 1),
             "tree_years": round(per_p / 21000 * 365, 1),
-            "trees_1year": round(per_p / 21000, 2),
             "wwf_pct": round(per_p / WWF_TARGET * 100, 0),
         },
     }
@@ -171,6 +169,85 @@ def make_qr(text, size=200):
         return None
 
 
+# ============================================================
+# AUTH FORMLARI (FIX: ayri st.form bloklari ile sifre kaydedilir)
+# ============================================================
+def render_auth_sidebar():
+    """Giris ve kayit formlarini ayri st.form bloklari olarak render eder.
+    Bu sayede tab degisiminde input degerleri sifirlanmaz."""
+    if not DB_AVAILABLE:
+        return
+
+    if st.session_state.user:
+        user_label = st.session_state.user.get("name") or st.session_state.user.get("email", "Kullanici")
+        st.success(f"Hosgeldin, {user_label}!")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🚪 Cikis", use_container_width=True):
+                st.session_state.user = None
+                st.rerun()
+        with col2:
+            if st.button("📋 Tariflerim", use_container_width=True):
+                st.session_state.page = "recipes"
+                st.rerun()
+        return
+
+    # Tab secimi — sadece hangi form gosterilecegini belirler
+    auth_tab = st.radio("", ["🔑 Giris Yap", "📝 Kayit Ol"], horizontal=True, key="auth_tab")
+    st.markdown("")  # bosluk
+
+    if auth_tab == "🔑 Giris Yap":
+        # FIX: st.form kullan — submit oncesi rerun olmaz, degerler korunur
+        with st.form("login_form", clear_on_submit=False):
+            st.markdown("**Giris Yap**")
+            email = st.text_input("Email", key="login_email", placeholder="ornek@email.com")
+            pw = st.text_input("Sifre", type="password", key="login_pw", placeholder="Sifreniz")
+            submitted = st.form_submit_button("Giris Yap", use_container_width=True, type="primary")
+
+        if submitted:
+            if not email or not pw:
+                st.error("Email ve sifre bos olamaz!")
+            else:
+                user = authenticate_user(email.strip(), pw)
+                if user:
+                    st.session_state.user = user
+                    st.success(f"Hosgeldin, {user.get('name') or email}!")
+                    st.rerun()
+                else:
+                    st.error("Email veya sifre yanlis!")
+
+    else:  # Kayit Ol
+        with st.form("register_form", clear_on_submit=False):
+            st.markdown("**Yeni Hesap Olustur**")
+            name = st.text_input("Ad Soyad", key="reg_name", placeholder="Ad Soyad")
+            email = st.text_input("Email", key="reg_email", placeholder="ornek@email.com")
+            pw = st.text_input("Sifre", type="password", key="reg_pw", placeholder="En az 6 karakter")
+            pw2 = st.text_input("Sifre Tekrar", type="password", key="reg_pw2", placeholder="Sifrenizi tekrarlayin")
+            submitted = st.form_submit_button("Kayit Ol", use_container_width=True, type="primary")
+
+        if submitted:
+            # Validasyon
+            if not email or not pw:
+                st.error("Email ve sifre zorunludur!")
+            elif len(pw) < 6:
+                st.error("Sifre en az 6 karakter olmalidir!")
+            elif pw != pw2:
+                st.error("Sifreler eslesmiyor!")
+            else:
+                uid = create_user(email.strip(), pw, name.strip() or None)
+                if uid:
+                    # FIX: Kayit basariliysa direkt authenticate et
+                    user = authenticate_user(email.strip(), pw)
+                    if user:
+                        st.session_state.user = user
+                        st.success(f"Hesap olusturuldu! Hosgeldin, {name or email}!")
+                        st.rerun()
+                    else:
+                        st.warning("Hesap olusturuldu, giris yapin.")
+                else:
+                    st.error("Bu email adresi zaten kayitli!")
+
+
 def main():
     st.set_page_config(page_title="Menu Carbon v3", page_icon="🌱", layout="wide")
 
@@ -194,7 +271,6 @@ def main():
     if "recipe_saved" not in st.session_state:
         st.session_state.recipe_saved = False
 
-    # Data
     try:
         EF_MAP, NAME_MAP, CAT_MAP, SEASON_MAP = load_factors()
         ING_OPTIONS = sorted(list(EF_MAP.keys()))
@@ -202,85 +278,51 @@ def main():
         st.error(f"Data error: {e}")
         st.stop()
 
-    # Sidebar
+    # ── SIDEBAR ───────────────────────────────────────────────────────────────
     with st.sidebar:
-        st.title("🌱 Menu Carbon v3")
+        st.markdown("""
+        <div style="padding:8px 0 4px 0;">
+            <span style="font-size:22px;font-weight:800;color:#15803d;">🌱 Menu Carbon</span>
+            <span style="font-size:11px;color:#6b7280;margin-left:6px;">v3</span>
+        </div>
+        """, unsafe_allow_html=True)
 
-        if DB_AVAILABLE:
-            if st.session_state.user:
-                st.success(f"👤 {st.session_state.user.get('name', st.session_state.user['email'])}")
-                if st.button("🚪 Cikis"):
-                    st.session_state.user = None
-                    st.rerun()
-            else:
-                tab = st.radio("", ["Giris", "Kayit"], horizontal=True)
-                email = st.text_input("Email")
-                pw = st.text_input("Sifre", type="password")
-                if tab == "Kayit":
-                    name = st.text_input("Isim")
-                    if st.button("Kayit Ol"):
-                        uid = create_user(email, pw, name)
-                        if uid:
-                            st.session_state.user = authenticate_user(email, pw)
-                            st.rerun()
-                        else:
-                            st.error("Email zaten var")
-                else:
-                    if st.button("Giris Yap"):
-                        u = authenticate_user(email, pw)
-                        if u:
-                            st.session_state.user = u
-                            st.rerun()
-                        else:
-                            st.error("Hatali bilgi")
+        # FIX: Duzeltilmis auth formlari
+        render_auth_sidebar()
 
         st.divider()
 
-        if st.button("🧮 Hesaplayici", use_container_width=True):
-            st.session_state.page = "calc"
-            st.rerun()
+        # Navigasyon
+        pages = {
+            "🧮 Hesaplayici": "calc",
+        }
         if DB_AVAILABLE and st.session_state.user:
-            if st.button("📋 Tariflerim", use_container_width=True):
-                st.session_state.page = "recipes"
-                st.rerun()
+            pages["📋 Tariflerim"] = "recipes"
         if DASHBOARD_AVAILABLE:
-            if st.button("📊 Dashboard", use_container_width=True):
-                st.session_state.page = "dash"
-                st.rerun()
+            pages["📊 Dashboard"] = "dash"
         if AI_AVAILABLE:
-            if st.button("🤖 AI Optimizer", use_container_width=True):
-                st.session_state.page = "ai"
-                st.rerun()
+            pages["🤖 AI Optimizer"] = "ai"
         if PDF_READER_AVAILABLE:
-            if st.button("📄 PDF'den Oku", use_container_width=True):
-                st.session_state.page = "pdf"
+            pages["📄 PDF'den Oku"] = "pdf"
+
+        for label, page_key in pages.items():
+            active = st.session_state.page == page_key
+            btn_type = "primary" if active else "secondary"
+            if st.button(label, use_container_width=True, key=f"nav_{page_key}"):
+                st.session_state.page = page_key
                 st.rerun()
 
         st.divider()
-        st.subheader("📖 Metodoloji")
-        st.caption("Commited Menu Carbon Methodology v2.0")
+        st.caption("📖 Commited Menu Carbon Methodology v2.0")
         methodology_path = "assets/methodology.pdf"
         if os.path.exists(methodology_path):
             with open(methodology_path, "rb") as f:
                 st.download_button("📄 Metodoloji Indir", data=f, file_name="methodology.pdf",
                                    mime="application/pdf", use_container_width=True)
-        with st.expander("ℹ️ Hakkinda"):
-            st.markdown("""
-**Veri Kaynaklari:** Poore & Nemecek (2018), Agribalyse 3.1, Ecoinvent
-
-**Siniflandirma:**
-- A: < 400g CO2e (Cok Dusuk)
-- B: 400-900g (Dusuk)
-- C: 900-1800g (Orta)
-- D: 1800-2600g (Yuksek)
-- E: > 2600g (Cok Yuksek)
-
-**Hedefler:** WWF 500g/ogun | WRI Cool Food 5380g/ogun
-""")
         st.divider()
         st.caption(f"v{APP_VERSION}")
 
-    # Page routing
+    # ── SAYFA YONLENDIRME ────────────────────────────────────────────────────
     if st.session_state.page == "dash" and DASHBOARD_AVAILABLE:
         render_dashboard()
         return
@@ -289,12 +331,26 @@ def main():
         st.title("📋 Tariflerim")
         recipes = get_recipes_by_user(st.session_state.user["id"])
         if recipes:
+            grade_colors = {"A": "#dcfce7", "B": "#fef9c3", "C": "#fed7aa", "D": "#fecaca", "E": "#fca5a5"}
             for r in recipes:
-                with st.expander(
-                    f"{r['name']} - {r.get('klimato_grade', '?')} ({r.get('gco2e_per_portion', 0):.0f}g)"
-                ):
-                    st.write(f"Olusturulma: {r.get('created_at', '')[:10]}")
-                    st.json(r.get("ingredients", []))
+                grade = r.get("klimato_grade", "?")
+                emission = r.get("gco2e_per_portion", 0)
+                color = grade_colors.get(grade, "#f9fafb")
+                with st.expander(f"**{r['name']}** — {grade} | {emission:.0f} g CO2e/porsiyon | {str(r.get('created_at',''))[:10]}"):
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Emisyon", f"{emission:.0f} g CO2e")
+                    c2.metric("Klimato", grade)
+                    c3.metric("Olusturma", str(r.get('created_at',''))[:10])
+                    try:
+                        ings = r.get("ingredients", [])
+                        if ings:
+                            ing_df = pd.DataFrame([
+                                {"Malzeme": i.get("id",""), "Gram": i.get("raw_weight_g",0)}
+                                for i in ings
+                            ])
+                            st.dataframe(ing_df, hide_index=True, use_container_width=True)
+                    except Exception:
+                        pass
         else:
             st.info("Henuz tarif yok. Hesaplayicidan bir tarif hesaplayip 'Tarifi Kaydet' butonuna basin.")
         return
@@ -327,38 +383,17 @@ def main():
                             c1.metric("Onceki", f"{res.original_emission:.0f}g")
                             c2.metric("Sonraki", f"{res.optimized_emission:.0f}g", delta=f"-{res.reduction_percent:.0f}%")
                             for s in res.suggestions:
-                                st.info(f"**{s.get('type','')}**: {s.get('original_ingredient','')} -> {s.get('new_ingredient','')} - {s.get('explanation','')}")
-                            if st.button("Uygula"):
-                                st.session_state.ingredients = [
-                                    {"id": i["id"], "raw_weight_g": i["raw_weight_g"]}
-                                    for i in res.optimized_ingredients
-                                ]
-                                st.session_state.page = "calc"
-                                st.rerun()
+                                st.info(f"{s.get('original_ingredient','')} -> {s.get('new_ingredient','')}: {s.get('explanation','')}")
                         else:
                             st.error(res.explanation)
-            else:
-                st.error("API key gecersiz.")
         else:
             st.warning("API key bulunamadi. .env dosyasina ANTHROPIC_API_KEY ekleyin.")
-        st.divider()
-        if AI_AVAILABLE:
-            st.subheader("Hizli Oneriler (AI gerektirmez)")
-            ings2 = [
-                {"id": i["id"], "name": NAME_MAP.get(i["id"], i["id"]),
-                 "raw_weight_g": i["raw_weight_g"], "emission_factor_g_per_g": EF_MAP.get(i["id"], 0)}
-                for i in st.session_state.ingredients
-            ]
-            tips = get_optimizer().get_quick_suggestions(ings2, EF_MAP, NAME_MAP)
-            for tip in tips:
-                st.success(f"💡 {tip['original_ingredient']} -> {tip['new_ingredient']}: {tip['description']} (-{tip['emission_saved_g']:.0f}g)")
         return
 
     if st.session_state.page == "pdf" and PDF_READER_AVAILABLE:
         st.title("📄 PDF / Gorsel'den Tarif Oku")
         reader = PDFMenuReader()
         uploaded_file = st.file_uploader("Dosya Yukle", type=["pdf", "png", "jpg", "jpeg", "webp"])
-        use_vision = bool(ANTHROPIC_API_KEY) and st.checkbox("Claude Vision kullan", value=True)
         if uploaded_file:
             file_bytes = uploaded_file.read()
             file_type = uploaded_file.type
@@ -369,22 +404,7 @@ def main():
                         text_content = reader.extract_text_from_pdf(file_bytes)
                         if text_content:
                             recipes = reader.parse_recipes_from_text(text_content)
-                    else:
-                        st.image(file_bytes, width=400)
-                        if use_vision and ANTHROPIC_API_KEY:
-                            r2 = PDFMenuReader(ANTHROPIC_API_KEY)
-                            result = r2.extract_text_from_image_vision(file_bytes)
-                            text_content = result.get("text", "")
-                            recipes = result.get("recipes", [])
-                        else:
-                            try:
-                                text_content = reader.extract_text_from_image_ocr(file_bytes)
-                                if text_content:
-                                    recipes = reader.parse_recipes_from_text(text_content)
-                            except Exception as ocr_err:
-                                st.warning(f"OCR kullanilamiyor: {ocr_err}")
                     if recipes:
-                        st.success(f"{len(recipes)} tarif bulundu!")
                         matched = reader.match_ingredients_to_database(recipes, EF_MAP, NAME_MAP)
                         names = [f"{r['name']} ({len(r['ingredients'])} malzeme)" for r in matched]
                         idx = st.selectbox("Tarif", range(len(names)), format_func=lambda i: names[i])
@@ -403,7 +423,7 @@ def main():
         return
 
     # ==========================================================================
-    # CALCULATOR PAGE (default)
+    # HESAPLAYICI SAYFASI (varsayilan)
     # ==========================================================================
     st.title("🌱 Menu Karbon Hesaplayici v3")
 
@@ -416,7 +436,7 @@ def main():
     )
 
     st.divider()
-    st.subheader("Malzemeler")
+    st.subheader("🥗 Malzemeler")
     for i, ing in enumerate(st.session_state.ingredients):
         c1, c2, c3 = st.columns([2, 1, 1])
         cur_id = ing.get("id", ING_OPTIONS[0])
@@ -437,24 +457,24 @@ def main():
         )
 
     c1, c2 = st.columns(2)
-    if c1.button("Ekle"):
+    if c1.button("➕ Ekle"):
         st.session_state.ingredients.append({"id": ING_OPTIONS[0], "raw_weight_g": 0})
         st.rerun()
-    if c2.button("Sil") and len(st.session_state.ingredients) > 1:
+    if c2.button("🗑️ Sil") and len(st.session_state.ingredients) > 1:
         st.session_state.ingredients.pop()
         st.rerun()
 
     st.divider()
-    st.subheader("Pisirme")
+    st.subheader("🍳 Pisirme")
     c1, c2, c3 = st.columns(3)
     energy = c1.selectbox(
         "Enerji", list(ENERGY_FACTORS.keys()),
-        format_func=lambda x: {"electricity": "Elektrik", "natural_gas": "Dogalgaz", "lpg": "LPG"}[x],
+        format_func=lambda x: {"electricity": "⚡ Elektrik", "natural_gas": "🔥 Dogalgaz", "lpg": "🔵 LPG"}[x],
     )
     power = c2.number_input("kW", 0.0, 20.0, 3.0, 0.5)
     dur = c3.number_input("dk", 0.0, 240.0, 12.0, 1.0)
 
-    st.subheader("Tasima")
+    st.subheader("🚛 Tasima")
     trans_on = st.checkbox("Dahil et", True)
     if trans_on:
         c1, c2 = st.columns(2)
@@ -477,25 +497,23 @@ def main():
         "transport": {"enabled": trans_on, "mode": trans_mode, "distance_km": trans_km},
     }
 
-    # HESAPLA
-    if st.button("HESAPLA", type="primary", use_container_width=True):
+    if st.button("🧮 HESAPLA", type="primary", use_container_width=True):
         res = calculate(payload, EF_MAP, SEASON_MAP)
         mid = compute_id(payload)
         st.session_state.last_result = res
         st.session_state.last_mid = mid
         st.session_state.last_payload = payload
-        st.session_state.recipe_saved = False  # reset save state on new calculation
+        st.session_state.recipe_saved = False
         if DB_AVAILABLE:
             uid = st.session_state.user["id"] if st.session_state.user else None
             save_calculation(payload, res, user_id=uid)
-        st.success("Hesaplandi!")
+        st.success("✅ Hesaplandi!")
 
-    # RESULTS
     if st.session_state.last_result is not None:
         res = st.session_state.last_result
         mid = st.session_state.last_mid
 
-        st.subheader("Sonuclar")
+        st.subheader("📊 Sonuclar")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Malzeme", f"{res['ingredient_emissions']:.0f}g")
         c2.metric("Pisirme", f"{res['cooking_emissions']:.0f}g")
@@ -512,21 +530,20 @@ def main():
         )
 
         if res["wri_ok"]:
-            st.success("WRI Cool Food Certified")
+            st.success("✅ WRI Cool Food Certified")
         else:
-            st.warning(f"WRI siniri asildi ({res['per_portion']:.0f}g > {res['wri_th']}g)")
+            st.warning(f"❌ WRI siniri asildi ({res['per_portion']:.0f}g > {res['wri_th']}g)")
 
-        st.subheader("Karsilastirma")
+        st.subheader("🌍 Karsilastirma")
         c1, c2, c3 = st.columns(3)
-        c1.metric("Araba", f"{res['insights']['car_km']:.1f} km")
-        c2.metric("1 Agac", f"{res['insights']['tree_years']:.0f} gun",
-                  help="1 agacin bu emisyonu temizlemesi icin gereken sure")
-        c3.metric("WWF", f"%{res['insights']['wwf_pct']:.0f}")
+        c1.metric("🚗 Araba", f"{res['insights']['car_km']:.1f} km")
+        c2.metric("🌳 1 Agac", f"{res['insights']['tree_years']:.0f} gun")
+        c3.metric("🎯 WWF", f"%{res['insights']['wwf_pct']:.0f}")
 
         if AI_AVAILABLE:
             tips = get_improvement_tips(g, "tr")
             if tips:
-                st.subheader("Ipuclari")
+                st.subheader("💡 Ipuclari")
                 for tip in tips:
                     st.info(tip)
 
@@ -549,9 +566,7 @@ def main():
                 fig.update_layout(height=300, margin=dict(t=20, b=20, l=100), yaxis=dict(autorange="reversed"))
                 st.plotly_chart(fig, use_container_width=True)
 
-        # ══════════════════════════════════════════════════════════════════════
-        # KAYDET BOLUMU — goze carpan tasarim
-        # ══════════════════════════════════════════════════════════════════════
+        # ── KAYDET BOLUMU ─────────────────────────────────────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
 
         if DB_AVAILABLE and st.session_state.user:
@@ -560,82 +575,32 @@ def main():
             sm = st.session_state.last_mid
 
             if st.session_state.recipe_saved:
-                # Kaydedildikten sonra gosterilen onay banner
                 st.markdown(
-                    f"""
-                    <div style="
-                        background: linear-gradient(135deg, #065f46, #047857);
-                        border-radius: 16px;
-                        padding: 24px 32px;
-                        display: flex;
-                        align-items: center;
-                        gap: 16px;
-                        margin: 8px 0 24px 0;
-                        box-shadow: 0 4px 20px rgba(4,120,87,0.35);
-                    ">
-                        <span style="font-size:40px;">✅</span>
-                        <div>
-                            <div style="color:#d1fae5;font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Kaydedildi</div>
-                            <div style="color:#ffffff;font-size:20px;font-weight:700;margin-top:2px;">"{sp['name']}" Tariflerim'e eklendi</div>
-                            <div style="color:#a7f3d0;font-size:12px;margin-top:4px;">ID: {sm}</div>
-                        </div>
-                    </div>
-                    """,
+                    f'<div style="background:linear-gradient(135deg,#065f46,#047857);border-radius:16px;'
+                    f'padding:24px 32px;display:flex;align-items:center;gap:16px;margin:8px 0 24px 0;'
+                    f'box-shadow:0 4px 20px rgba(4,120,87,0.35);">'
+                    f'<span style="font-size:40px;">✅</span>'
+                    f'<div><div style="color:#d1fae5;font-size:13px;font-weight:600;letter-spacing:1px;">KAYDEDILDI</div>'
+                    f'<div style="color:#fff;font-size:20px;font-weight:700;">"{sp["name"]}" Tariflerim e eklendi</div>'
+                    f'<div style="color:#a7f3d0;font-size:12px;margin-top:4px;">ID: {sm}</div></div></div>',
                     unsafe_allow_html=True,
                 )
             else:
-                # Kaydet butonu — buyuk, cekici tasarim
                 st.markdown(
-                    """
-                    <div style="
-                        background: linear-gradient(135deg, #1e3a5f, #1d4ed8);
-                        border-radius: 16px;
-                        padding: 24px 32px;
-                        margin: 8px 0 16px 0;
-                        box-shadow: 0 4px 20px rgba(29,78,216,0.35);
-                        border: 1px solid rgba(255,255,255,0.1);
-                    ">
-                        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
-                            <span style="font-size:36px;">💾</span>
-                            <div>
-                                <div style="color:#bfdbfe;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Tarifi kaydet</div>
-                                <div style="color:#ffffff;font-size:18px;font-weight:700;margin-top:1px;">Hesaplanan sonucu Tariflerim'e ekle</div>
-                            </div>
-                        </div>
-                        <div style="color:#93c5fd;font-size:13px;margin-bottom:4px;">
-                            Tarifi kaydederek daha sonra <b style="color:#fff;">Tariflerim</b> sayfasinda inceleyebilirsiniz.
-                        </div>
-                    </div>
-                    """,
+                    '<div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);border-radius:16px;'
+                    'padding:24px 32px;margin:8px 0 16px 0;box-shadow:0 4px 20px rgba(29,78,216,0.35);">'
+                    '<div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">'
+                    '<span style="font-size:36px;">💾</span>'
+                    '<div><div style="color:#bfdbfe;font-size:12px;font-weight:600;letter-spacing:1px;">TARIFI KAYDET</div>'
+                    '<div style="color:#fff;font-size:18px;font-weight:700;">Hesaplanan sonucu Tariflerim e ekle</div></div></div>'
+                    '<div style="color:#93c5fd;font-size:13px;">Kaydettikten sonra Tariflerim sayfasinda gorunecek.</div>'
+                    '</div>',
                     unsafe_allow_html=True,
                 )
-
-                # CSS ile butonun kendisini de buyutelim
-                st.markdown(
-                    """
-                    <style>
-                    div[data-testid="stButton"]:has(button[kind="primary"]#save_btn) button {
-                        font-size: 18px !important;
-                        padding: 14px 0 !important;
-                        font-weight: 700 !important;
-                    }
-                    </style>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                if st.button(
-                    "💾  TARIFI KAYDET  →  Tariflerim",
-                    type="primary",
-                    use_container_width=True,
-                    key="save_btn",
-                ):
-                    rid = save_recipe(
-                        sm,
-                        sp["name"],
-                        sp["ingredients"],
-                        sp["cooking"],
-                        sp["transport"],
+                if st.button("💾  TARIFI KAYDET  →  Tariflerim", type="primary",
+                             use_container_width=True, key="save_btn"):
+                    save_recipe(
+                        sm, sp["name"], sp["ingredients"], sp["cooking"], sp["transport"],
                         {
                             "total_gco2e": sr["total"],
                             "gco2e_per_portion": sr["per_portion"],
@@ -649,42 +614,27 @@ def main():
                     st.rerun()
 
         elif DB_AVAILABLE and not st.session_state.user:
-            # Giris yapilmamis — uyari banner
             st.markdown(
-                """
-                <div style="
-                    background: linear-gradient(135deg, #78350f, #b45309);
-                    border-radius: 14px;
-                    padding: 20px 28px;
-                    display: flex;
-                    align-items: center;
-                    gap: 14px;
-                    margin: 8px 0 24px 0;
-                    box-shadow: 0 4px 16px rgba(180,83,9,0.3);
-                ">
-                    <span style="font-size:32px;">🔒</span>
-                    <div>
-                        <div style="color:#fef3c7;font-size:13px;font-weight:600;">Tarifi kaydetmek icin giris yapin</div>
-                        <div style="color:#fcd34d;font-size:12px;margin-top:4px;">Sol paneldeki giris formunu kullanin</div>
-                    </div>
-                </div>
-                """,
+                '<div style="background:linear-gradient(135deg,#78350f,#b45309);border-radius:14px;'
+                'padding:20px 28px;display:flex;align-items:center;gap:14px;margin:8px 0 24px 0;">'
+                '<span style="font-size:32px;">🔒</span>'
+                '<div><div style="color:#fef3c7;font-size:13px;font-weight:600;">Tarifi kaydetmek icin giris yapin</div>'
+                '<div style="color:#fcd34d;font-size:12px;margin-top:4px;">Sol paneldeki giris formunu kullanin</div></div></div>',
                 unsafe_allow_html=True,
             )
 
-        # EXPORT
         st.divider()
         sp2 = st.session_state.last_payload or payload
         c1, c2 = st.columns(2)
         c1.download_button(
-            "JSON Indir",
+            "⬇️ JSON Indir",
             json.dumps({"id": mid, "payload": sp2, "result": res}, indent=2, default=str),
             "recipe.json",
         )
         if QR_AVAILABLE:
             qr = make_qr(f"https://carbonkey.app/{mid}")
             if qr:
-                c2.download_button("QR Indir", qr, "qr.png", "image/png")
+                c2.download_button("📱 QR Indir", qr, "qr.png", "image/png")
 
 
 if __name__ == "__main__":
