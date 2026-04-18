@@ -174,7 +174,7 @@ def make_qr(text, size=200):
 def main():
     st.set_page_config(page_title="Menu Carbon v3", page_icon="🌱", layout="wide")
 
-    # ── Session state ────────────────────────────────────────────────────────
+    # Session state
     if "user" not in st.session_state:
         st.session_state.user = None
     if "ingredients" not in st.session_state:
@@ -185,15 +185,16 @@ def main():
         ]
     if "page" not in st.session_state:
         st.session_state.page = "calc"
-    # FIX 1: Persist calculation result across Streamlit reruns
     if "last_result" not in st.session_state:
         st.session_state.last_result = None
     if "last_mid" not in st.session_state:
         st.session_state.last_mid = None
     if "last_payload" not in st.session_state:
         st.session_state.last_payload = None
+    if "recipe_saved" not in st.session_state:
+        st.session_state.recipe_saved = False
 
-    # ── Data ─────────────────────────────────────────────────────────────────
+    # Data
     try:
         EF_MAP, NAME_MAP, CAT_MAP, SEASON_MAP = load_factors()
         ING_OPTIONS = sorted(list(EF_MAP.keys()))
@@ -201,7 +202,7 @@ def main():
         st.error(f"Data error: {e}")
         st.stop()
 
-    # ── Sidebar ───────────────────────────────────────────────────────────────
+    # Sidebar
     with st.sidebar:
         st.title("🌱 Menu Carbon v3")
 
@@ -263,21 +264,23 @@ def main():
             with open(methodology_path, "rb") as f:
                 st.download_button("📄 Metodoloji Indir", data=f, file_name="methodology.pdf",
                                    mime="application/pdf", use_container_width=True)
-
         with st.expander("ℹ️ Hakkinda"):
             st.markdown("""
 **Veri Kaynaklari:** Poore & Nemecek (2018), Agribalyse 3.1, Ecoinvent
 
 **Siniflandirma:**
-- A: < 400g CO2e  - B: 400-900g  - C: 900-1800g
-- D: 1800-2600g  - E: > 2600g
+- A: < 400g CO2e (Cok Dusuk)
+- B: 400-900g (Dusuk)
+- C: 900-1800g (Orta)
+- D: 1800-2600g (Yuksek)
+- E: > 2600g (Cok Yuksek)
 
 **Hedefler:** WWF 500g/ogun | WRI Cool Food 5380g/ogun
 """)
         st.divider()
         st.caption(f"v{APP_VERSION}")
 
-    # ── Page routing ──────────────────────────────────────────────────────────
+    # Page routing
     if st.session_state.page == "dash" and DASHBOARD_AVAILABLE:
         render_dashboard()
         return
@@ -399,21 +402,21 @@ def main():
                     st.error(f"Hata: {e}")
         return
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
     # CALCULATOR PAGE (default)
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
     st.title("🌱 Menu Karbon Hesaplayici v3")
 
     c1, c2, c3 = st.columns([2, 1, 1])
-    recipe_name = c1.text_input("Tarif", st.session_state.get("recipe_name", "Izgara Köfte + Pilav"))
+    recipe_name = c1.text_input("Tarif", st.session_state.get("recipe_name", "Izgara Koefte + Pilav"))
     portions = c2.number_input("Porsiyon", 1, 100, 1)
     meal_type = c3.selectbox(
-        "Öğün", ["breakfast", "lunch", "dinner"], 1,
-        format_func=lambda x: {"breakfast": "Kahvalti", "lunch": "Öğle", "dinner": "Aksam"}[x],
+        "Ogun", ["breakfast", "lunch", "dinner"], 1,
+        format_func=lambda x: {"breakfast": "Kahvalti", "lunch": "Ogle", "dinner": "Aksam"}[x],
     )
 
     st.divider()
-    st.subheader("🥗 Malzemeler")
+    st.subheader("Malzemeler")
     for i, ing in enumerate(st.session_state.ingredients):
         c1, c2, c3 = st.columns([2, 1, 1])
         cur_id = ing.get("id", ING_OPTIONS[0])
@@ -434,24 +437,24 @@ def main():
         )
 
     c1, c2 = st.columns(2)
-    if c1.button("➕ Ekle"):
+    if c1.button("Ekle"):
         st.session_state.ingredients.append({"id": ING_OPTIONS[0], "raw_weight_g": 0})
         st.rerun()
-    if c2.button("🗑️ Sil") and len(st.session_state.ingredients) > 1:
+    if c2.button("Sil") and len(st.session_state.ingredients) > 1:
         st.session_state.ingredients.pop()
         st.rerun()
 
     st.divider()
-    st.subheader("🍳 Pisirme")
+    st.subheader("Pisirme")
     c1, c2, c3 = st.columns(3)
     energy = c1.selectbox(
         "Enerji", list(ENERGY_FACTORS.keys()),
-        format_func=lambda x: {"electricity": "⚡ Elektrik", "natural_gas": "🔥 Dogalgaz", "lpg": "🔵 LPG"}[x],
+        format_func=lambda x: {"electricity": "Elektrik", "natural_gas": "Dogalgaz", "lpg": "LPG"}[x],
     )
     power = c2.number_input("kW", 0.0, 20.0, 3.0, 0.5)
     dur = c3.number_input("dk", 0.0, 240.0, 12.0, 1.0)
 
-    st.subheader("🚛 Tasima")
+    st.subheader("Tasima")
     trans_on = st.checkbox("Dahil et", True)
     if trans_on:
         c1, c2 = st.columns(2)
@@ -474,25 +477,25 @@ def main():
         "transport": {"enabled": trans_on, "mode": trans_mode, "distance_km": trans_km},
     }
 
-    # ── HESAPLA ───────────────────────────────────────────────────────────────
-    # FIX 2: After calculation, save result to session_state so it survives reruns
-    if st.button("🧮 HESAPLA", type="primary", use_container_width=True):
+    # HESAPLA
+    if st.button("HESAPLA", type="primary", use_container_width=True):
         res = calculate(payload, EF_MAP, SEASON_MAP)
         mid = compute_id(payload)
-        st.session_state.last_result = res        # <── FIX
-        st.session_state.last_mid = mid            # <── FIX
-        st.session_state.last_payload = payload    # <── FIX
+        st.session_state.last_result = res
+        st.session_state.last_mid = mid
+        st.session_state.last_payload = payload
+        st.session_state.recipe_saved = False  # reset save state on new calculation
         if DB_AVAILABLE:
             uid = st.session_state.user["id"] if st.session_state.user else None
             save_calculation(payload, res, user_id=uid)
-        st.success("✅ Hesaplandi!")
+        st.success("Hesaplandi!")
 
-    # ── RESULTS (reads from session_state – always visible after first calc) ─
+    # RESULTS
     if st.session_state.last_result is not None:
         res = st.session_state.last_result
         mid = st.session_state.last_mid
 
-        st.subheader("📊 Sonuclar")
+        st.subheader("Sonuclar")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Malzeme", f"{res['ingredient_emissions']:.0f}g")
         c2.metric("Pisirme", f"{res['cooking_emissions']:.0f}g")
@@ -509,21 +512,21 @@ def main():
         )
 
         if res["wri_ok"]:
-            st.success("✅ WRI Cool Food Certified")
+            st.success("WRI Cool Food Certified")
         else:
-            st.warning(f"❌ WRI siniri asildi ({res['per_portion']:.0f}g > {res['wri_th']}g)")
+            st.warning(f"WRI siniri asildi ({res['per_portion']:.0f}g > {res['wri_th']}g)")
 
-        st.subheader("🌍 Karsilastirma")
+        st.subheader("Karsilastirma")
         c1, c2, c3 = st.columns(3)
-        c1.metric("🚗 Araba", f"{res['insights']['car_km']:.1f} km")
-        c2.metric("🌳 1 Agac", f"{res['insights']['tree_years']:.0f} gun",
+        c1.metric("Araba", f"{res['insights']['car_km']:.1f} km")
+        c2.metric("1 Agac", f"{res['insights']['tree_years']:.0f} gun",
                   help="1 agacin bu emisyonu temizlemesi icin gereken sure")
-        c3.metric("🎯 WWF", f"%{res['insights']['wwf_pct']:.0f}")
+        c3.metric("WWF", f"%{res['insights']['wwf_pct']:.0f}")
 
         if AI_AVAILABLE:
             tips = get_improvement_tips(g, "tr")
             if tips:
-                st.subheader("💡 Ipuclari")
+                st.subheader("Ipuclari")
                 for tip in tips:
                     st.info(tip)
 
@@ -546,48 +549,142 @@ def main():
                 fig.update_layout(height=300, margin=dict(t=20, b=20, l=100), yaxis=dict(autorange="reversed"))
                 st.plotly_chart(fig, use_container_width=True)
 
-        # ── KAYDET ────────────────────────────────────────────────────────────
-        # FIX 3: "Tarifi Kaydet" button is OUTSIDE the HESAPLA block and reads
-        #         from session_state. Keys match database.py schema exactly.
-        st.divider()
-        if DB_AVAILABLE and st.session_state.user:
-            if st.button("💾 Tarifi Kaydet", type="secondary", use_container_width=True):
-                sp = st.session_state.last_payload
-                sr = st.session_state.last_result
-                sm = st.session_state.last_mid
-                rid = save_recipe(
-                    sm,
-                    sp["name"],
-                    sp["ingredients"],
-                    sp["cooking"],
-                    sp["transport"],
-                    {
-                        "total_gco2e": sr["total"],          # FIX: correct key
-                        "gco2e_per_portion": sr["per_portion"],  # FIX: correct key
-                        "klimato_grade": sr["klimato"],       # FIX: correct key
-                        "wri_compliant": sr["wri_ok"],        # FIX: correct key
-                        "portions": sp.get("portions", 1),
-                    },
-                    user_id=st.session_state.user["id"],
-                )
-                st.success(f"✅ '{sp['name']}' Tariflerim'e kaydedildi! (ID: {sm})")
-        elif DB_AVAILABLE and not st.session_state.user:
-            # FIX 4: Show login prompt when not logged in
-            st.info("💡 Tarifi kaydetmek icin sol panelden giris yapin.")
+        # ══════════════════════════════════════════════════════════════════════
+        # KAYDET BOLUMU — goze carpan tasarim
+        # ══════════════════════════════════════════════════════════════════════
+        st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── EXPORT ────────────────────────────────────────────────────────────
+        if DB_AVAILABLE and st.session_state.user:
+            sp = st.session_state.last_payload
+            sr = st.session_state.last_result
+            sm = st.session_state.last_mid
+
+            if st.session_state.recipe_saved:
+                # Kaydedildikten sonra gosterilen onay banner
+                st.markdown(
+                    f"""
+                    <div style="
+                        background: linear-gradient(135deg, #065f46, #047857);
+                        border-radius: 16px;
+                        padding: 24px 32px;
+                        display: flex;
+                        align-items: center;
+                        gap: 16px;
+                        margin: 8px 0 24px 0;
+                        box-shadow: 0 4px 20px rgba(4,120,87,0.35);
+                    ">
+                        <span style="font-size:40px;">✅</span>
+                        <div>
+                            <div style="color:#d1fae5;font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Kaydedildi</div>
+                            <div style="color:#ffffff;font-size:20px;font-weight:700;margin-top:2px;">"{sp['name']}" Tariflerim'e eklendi</div>
+                            <div style="color:#a7f3d0;font-size:12px;margin-top:4px;">ID: {sm}</div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                # Kaydet butonu — buyuk, cekici tasarim
+                st.markdown(
+                    """
+                    <div style="
+                        background: linear-gradient(135deg, #1e3a5f, #1d4ed8);
+                        border-radius: 16px;
+                        padding: 24px 32px;
+                        margin: 8px 0 16px 0;
+                        box-shadow: 0 4px 20px rgba(29,78,216,0.35);
+                        border: 1px solid rgba(255,255,255,0.1);
+                    ">
+                        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                            <span style="font-size:36px;">💾</span>
+                            <div>
+                                <div style="color:#bfdbfe;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Tarifi kaydet</div>
+                                <div style="color:#ffffff;font-size:18px;font-weight:700;margin-top:1px;">Hesaplanan sonucu Tariflerim'e ekle</div>
+                            </div>
+                        </div>
+                        <div style="color:#93c5fd;font-size:13px;margin-bottom:4px;">
+                            Tarifi kaydederek daha sonra <b style="color:#fff;">Tariflerim</b> sayfasinda inceleyebilirsiniz.
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                # CSS ile butonun kendisini de buyutelim
+                st.markdown(
+                    """
+                    <style>
+                    div[data-testid="stButton"]:has(button[kind="primary"]#save_btn) button {
+                        font-size: 18px !important;
+                        padding: 14px 0 !important;
+                        font-weight: 700 !important;
+                    }
+                    </style>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                if st.button(
+                    "💾  TARIFI KAYDET  →  Tariflerim",
+                    type="primary",
+                    use_container_width=True,
+                    key="save_btn",
+                ):
+                    rid = save_recipe(
+                        sm,
+                        sp["name"],
+                        sp["ingredients"],
+                        sp["cooking"],
+                        sp["transport"],
+                        {
+                            "total_gco2e": sr["total"],
+                            "gco2e_per_portion": sr["per_portion"],
+                            "klimato_grade": sr["klimato"],
+                            "wri_compliant": sr["wri_ok"],
+                            "portions": sp.get("portions", 1),
+                        },
+                        user_id=st.session_state.user["id"],
+                    )
+                    st.session_state.recipe_saved = True
+                    st.rerun()
+
+        elif DB_AVAILABLE and not st.session_state.user:
+            # Giris yapilmamis — uyari banner
+            st.markdown(
+                """
+                <div style="
+                    background: linear-gradient(135deg, #78350f, #b45309);
+                    border-radius: 14px;
+                    padding: 20px 28px;
+                    display: flex;
+                    align-items: center;
+                    gap: 14px;
+                    margin: 8px 0 24px 0;
+                    box-shadow: 0 4px 16px rgba(180,83,9,0.3);
+                ">
+                    <span style="font-size:32px;">🔒</span>
+                    <div>
+                        <div style="color:#fef3c7;font-size:13px;font-weight:600;">Tarifi kaydetmek icin giris yapin</div>
+                        <div style="color:#fcd34d;font-size:12px;margin-top:4px;">Sol paneldeki giris formunu kullanin</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        # EXPORT
         st.divider()
-        sp = st.session_state.last_payload or payload
+        sp2 = st.session_state.last_payload or payload
         c1, c2 = st.columns(2)
         c1.download_button(
-            "⬇️ JSON Indir",
-            json.dumps({"id": mid, "payload": sp, "result": res}, indent=2, default=str),
+            "JSON Indir",
+            json.dumps({"id": mid, "payload": sp2, "result": res}, indent=2, default=str),
             "recipe.json",
         )
         if QR_AVAILABLE:
             qr = make_qr(f"https://carbonkey.app/{mid}")
             if qr:
-                c2.download_button("📱 QR Indir", qr, "qr.png", "image/png")
+                c2.download_button("QR Indir", qr, "qr.png", "image/png")
 
 
 if __name__ == "__main__":
